@@ -8,35 +8,36 @@ import (
 	"github.com/webview/webview"
 )
 
-/*
-
-{
-  const oldFakeFetch = window.fake_fetch;
-  window.fake_fetch = async (url) => {
-    const txt = await oldFakeFetch(url);
-    return {
+const JS_OVERRIDES string = `
+window.CordView = {
+  native: { fakefetch: temp_fakefetch },
+  fetch: (url) =>
+    CordView.native.fakefetch(url).then((txt) => ({
       text: () => Promise.resolve(txt),
       json: () => Promise.resolve(JSON.parse(txt)),
       status: 200,
-    };
-  };
-  const oldEval = eval;
-  window.eval = function (code) {
-    return oldEval.call(
+    })),/* 
+  getFakeWindow: () => {
+    const fakeWindow = Object.assign({}, window);
+    fakeWindow.window = fakeWindow.self = fakeWindow;
+    Object.assign(fakeWindow, CordView);
+    return fakeWindow;
+  }, */
+  eval: function (code) {
+    return eval.call(
       this,
-      `((fetch,eval)=>{${code}
-})(fetch,eval)`
+      "((eval, fetch)=>{return " + code.replaceAll('window.eval', 'CordView.eval') + "\n})(CordView.eval, CordView.fetch)"
     );
-  };
-}
+  },
+};
 
-*/
-const JS_OVERRIDES string = "const a=fakefetch,b=eval;window.fakefetch=b=>a(b).then(a=>({text:()=>Promise.resolve(a),json:()=>Promise.resolve(JSON.parse(a)),status:200})),window.fakeeval=function(a){return b.call(this,`((fetch,eval)=>{${a}\n})(fakefetch,fakeeval)`)}"
+delete window.temp_fakefetch;
+`
 
 const CC_URL string = "https://raw.githubusercontent.com/Cumcord/builds/main/build.js"
 
 func fakeFetch(url string) string {
-	print("\n\nfake fetch called for: " + url + "\n\n")
+	print("\n\n\u001b[31mfake fetch called for: " + url + "\n\n\u001b[37m")
 	resp, err := http.Get(url)
 	if err != nil {
 		return ""
@@ -59,14 +60,14 @@ func main() {
 	w.Navigate("https://discord.com/channels/@me")
 
 	// inject initial fakefetch, but this will be overwritten later
-	w.Bind("fakefetch", fakeFetch)
+	w.Bind("temp_fakefetch", fakeFetch)
 
 	go (func() {
 		time.Sleep(3 * time.Second)
 		w.Dispatch(func() {
 			// finish off fake fetch, and inject fakeeval
 			w.Eval(JS_OVERRIDES)
-			w.Eval("fakefetch('" + CC_URL + "').then(f => f.text()).then(fakeeval)")
+			w.Eval("CordView.fetch('" + CC_URL + "').then(f => f.text()).then(CordView.eval)")
 		})
 	})()
 
