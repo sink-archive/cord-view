@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"time"
@@ -12,21 +14,28 @@ const JS_OVERRIDES string = `
 window.CordView = {
   native: { fakefetch: temp_fakefetch },
   fetch: (url) =>
-    CordView.native.fakefetch(url).then((txt) => ({
-      text: () => Promise.resolve(txt),
-      json: () => Promise.resolve(JSON.parse(txt)),
-      status: 200,
-    })),/* 
+    CordView.native
+      .fakefetch(url)
+      .then(JSON.parse)
+      .then((res) => ({
+        text: () => Promise.resolve(res.text),
+        json: () => Promise.resolve(JSON.parse(res.text)),
+        status: res.status,
+      })) /* 
   getFakeWindow: () => {
     const fakeWindow = Object.assign({}, window);
     fakeWindow.window = fakeWindow.self = fakeWindow;
     Object.assign(fakeWindow, CordView);
     return fakeWindow;
-  }, */
+  }, */,
   eval: function (code) {
     return eval.call(
       this,
-      "((eval, fetch)=>{return " + code.replaceAll('window.eval', 'CordView.eval') + "\n})(CordView.eval, CordView.fetch)"
+      "((eval, fetch)=>{return " +
+        code
+          .replaceAll("=window.eval", "=CordView.eval")
+          .replaceAll("window.eval(", "CordView.eval(") +
+        "\n})(CordView.eval, CordView.fetch)"
     );
   },
 };
@@ -48,7 +57,21 @@ func fakeFetch(url string) string {
 		return ""
 	}
 
-	return string(txt)
+	ret := struct {
+		Text   string `json:"text"`
+		Status int `json:"status"`
+	}{
+		Text:   string(txt),
+		Status: resp.StatusCode,
+	}
+
+	fmt.Printf("\n\n\u001b[32m%d\n\n\u001b[37m", ret.Status)
+
+	json, err := json.Marshal(ret)
+	if err != nil {
+		return ""
+	}
+	return string(json)
 }
 
 func main() {
