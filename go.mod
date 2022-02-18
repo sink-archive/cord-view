@@ -1,4 +1,4 @@
-module github.com/github/cord-view
+module github.com/yellowsink/cord-view
 
 go 1.17
 
